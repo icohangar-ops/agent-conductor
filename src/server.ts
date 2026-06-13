@@ -180,11 +180,17 @@ export function createServer(): McpServer {
 
   server.tool(
     "engine_status",
-    "Health-check the vendored CHP decision engine (Python subprocess).",
-    {},
-    async () => {
+    "Health/readiness probe for the vendored CHP decision engine (Python " +
+      "subprocess). By default returns a cheap readiness snapshot (running, last " +
+      "exit code, restart-backoff state) WITHOUT spawning Python. Pass probe=true " +
+      "to also issue a live ping that warms/spawns the subprocess.",
+    { probe: z.boolean().optional().describe("Issue a live ping (spawns the subprocess). Default false.") },
+    async ({ probe }) => {
       try {
-        return jsonContent(await chpBridge.ping());
+        const readiness = chpBridge.engineStatus();
+        if (!probe) return jsonContent(readiness);
+        const ping = await chpBridge.ping();
+        return jsonContent({ ...readiness, running: chpBridge.engineStatus().running, ping });
       } catch (error) {
         return errorContent(error);
       }
