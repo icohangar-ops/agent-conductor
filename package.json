@@ -21,7 +21,11 @@
     "dev": "node src/index.ts",
     "test": "node --test test/*.test.ts",
     "test:engine": "python3 engine/test_bridge.py",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "mcpb:pack": "bash scripts/mcpb-pack.sh",
+    "mcpb:validate": "mcpb validate mcpb/manifest.json",
+    "smithery:publish": "bash scripts/smithery-publish-mcpb.sh",
+    "smithery:agent-token": "bash scripts/smithery-agent-token.sh"
   },
   "keywords": [
     "mcp",
