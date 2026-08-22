@@ -5,6 +5,7 @@
 
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.icohangar--ops%2Fagent--conductor-00C4B4)](https://registry.modelcontextprotocol.io)
 [![npm](https://img.shields.io/npm/v/@cubiczan/agent-conductor)](https://www.npmjs.com/package/@cubiczan/agent-conductor)
+[![PyPI](https://img.shields.io/pypi/v/consensus-hardening-protocol)](https://pypi.org/project/consensus-hardening-protocol/)
 [![Conformance](https://img.shields.io/badge/CHP_Profile_A-via_PyPI-brightgreen)](https://pypi.org/project/consensus-hardening-protocol/)
 
 > **Cubiczan stack** — [Profile](https://github.com/Cubiczan) · [CHP](https://github.com/Cubiczan/consensus-hardening-protocol) · **You are here:** `agent-conductor`
@@ -79,11 +80,10 @@ Three capability groups:
 
 ```bash
 npx -y @cubiczan/agent-conductor
-# decision_* tools also need:
-#   pip install -r engine/requirements.txt   # after cloning, or use the published package's engine/
+pip install consensus-hardening-protocol   # required for decision_* tools
 ```
 
-
+**npm:** [@cubiczan/agent-conductor](https://www.npmjs.com/package/@cubiczan/agent-conductor) · **PyPI:** [consensus-hardening-protocol](https://pypi.org/project/consensus-hardening-protocol/)
 
 Requirements: **Node 23+** (runs TypeScript natively) and **Python 3.10+**
 with the published CHP package installed.
@@ -110,8 +110,8 @@ Or in any MCP client's JSON config:
 {
   "mcpServers": {
     "agent-conductor": {
-      "command": "node",
-      "args": ["/path/to/agent-conductor/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "@cubiczan/agent-conductor"]
     }
   }
 }
