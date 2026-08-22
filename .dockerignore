@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.gitignore
+.claude
+openspec
+examples
+test
+ARCHITECTURE.md
+*.md
+!README.md
+!LICENSE
+!AGENTS.md
+server.json
+.DS_Store

@@ -1,5 +1,8 @@
 # Agent Conductor
 
+[![icohangar-ops/agent-conductor MCP server](https://glama.ai/mcp/servers/icohangar-ops/agent-conductor/badges/score.svg)](https://glama.ai/mcp/servers/icohangar-ops/agent-conductor)
+
+
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.icohangar--ops%2Fagent--conductor-00C4B4)](https://registry.modelcontextprotocol.io)
 [![npm](https://img.shields.io/npm/v/@cubiczan/agent-conductor)](https://www.npmjs.com/package/@cubiczan/agent-conductor)
 [![Conformance](https://img.shields.io/badge/CHP_Profile_A-via_PyPI-brightgreen)](https://pypi.org/project/consensus-hardening-protocol/)
