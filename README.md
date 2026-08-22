@@ -1,5 +1,9 @@
 # Agent Conductor
 
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.icohangar--ops%2Fagent--conductor-00C4B4)](https://registry.modelcontextprotocol.io)
+[![npm](https://img.shields.io/npm/v/@cubiczan/agent-conductor)](https://www.npmjs.com/package/@cubiczan/agent-conductor)
+[![Conformance](https://img.shields.io/badge/CHP_Profile_A-via_PyPI-brightgreen)](https://pypi.org/project/consensus-hardening-protocol/)
+
 > **Cubiczan stack** — [Profile](https://github.com/Cubiczan) · [CHP](https://github.com/Cubiczan/consensus-hardening-protocol) · **You are here:** `agent-conductor`
 
 **AGENTS.md in, governed agent team out.**
@@ -69,6 +73,14 @@ Three capability groups:
    foundation-attack pass before a high-stakes change locks.
 
 ## Quick start
+
+```bash
+npx -y @cubiczan/agent-conductor
+# decision_* tools also need:
+#   pip install -r engine/requirements.txt   # after cloning, or use the published package's engine/
+```
+
+
 
 Requirements: **Node 23+** (runs TypeScript natively) and **Python 3.10+**
 with the published CHP package installed.

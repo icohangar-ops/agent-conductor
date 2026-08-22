@@ -1,18 +1,27 @@
 {
-  "name": "agent-conductor",
+  "name": "@cubiczan/agent-conductor",
   "version": "0.1.0",
   "description": "Agent Conductor — AGENTS.md in, governed agent team out. MCP server that compiles AGENTS.md contracts and SKILL.md skills into orchestrated, consensus-gated agent operations.",
+  "mcpName": "io.github.icohangar-ops/agent-conductor",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "agent-conductor": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "engine",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "node src/index.ts",
     "test": "node --test test/*.test.ts",
-    "test:engine": "python3 engine/test_bridge.py"
+    "test:engine": "python3 engine/test_bridge.py",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
@@ -20,9 +29,19 @@
     "skills",
     "agent-orchestration",
     "consensus",
-    "governance"
+    "governance",
+    "chp"
   ],
+  "author": "Shyam Desigan <sam@cubiczan.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/icohangar-ops/agent-conductor.git"
+  },
+  "homepage": "https://github.com/icohangar-ops/agent-conductor#readme",
+  "bugs": {
+    "url": "https://github.com/icohangar-ops/agent-conductor/issues"
+  },
   "engines": {
     "node": ">=23.0.0"
   },
@@ -33,5 +52,8 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

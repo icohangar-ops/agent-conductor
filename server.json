@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.icohangar-ops/agent-conductor",
+  "description": "AGENTS.md + SKILL.md orchestration over MCP with CHP Profile A decision gates (R0 + adversary). Requires Python 3.10+ and pip install -r engine/requirements.txt for decision_* tools.",
+  "repository": {
+    "url": "https://github.com/icohangar-ops/agent-conductor",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@cubiczan/agent-conductor",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
