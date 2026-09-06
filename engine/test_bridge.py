@@ -21,6 +21,7 @@ def main():
         [
             {"id": 1, "method": "ping", "params": {}},
             {"id": 2, "method": "r0_gate", "params": {"solvable": True, "scoped": True, "valid": True, "worth_it": True}},
+            {"id": 6, "method": "r0_gate", "params": {"solvable": True, "scoped": True, "valid": True, "worth_it": True, "funded": False}},
             {"id": 3, "method": "adversary", "params": {"claim": "Test claim", "context": "test"}},
             {"id": 4, "method": "bogus", "params": {}},
             {"id": 5, "method": "adversary", "params": {}},
@@ -30,6 +31,8 @@ def main():
 
     assert by_id[1]["result"]["ok"] is True
     assert by_id[2]["result"]["verdict"] == "PASS"
+    assert by_id[6]["result"]["verdict"] == "HALT"
+    assert by_id[6]["result"]["results"]["Funded"] == "FATAL"
     assert isinstance(by_id[3]["result"]["foundation_score"], int)
     assert by_id[3]["result"]["findings"], "adversary pass should produce findings"
     assert "unknown method" in by_id[4]["error"]

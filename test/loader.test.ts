@@ -46,6 +46,14 @@ test("parseFrontmatter handles scalars, inline lists, and dash lists", () => {
   assert.equal(body, "Body here.");
 });
 
+test("discovers the safe-autonomous-run example skill", () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "examples", "safe-autonomous-run");
+  const skills = discoverSkills(root);
+  const skill = skills.find((s) => s.name === "safe-autonomous-run");
+  assert.ok(skill);
+  assert.match(skill.description, /spend ceiling/i);
+});
+
 test("parseFrontmatter passes through files without frontmatter", () => {
   const { fields, body } = parseFrontmatter("# Just markdown\n");
   assert.deepEqual(fields, {});

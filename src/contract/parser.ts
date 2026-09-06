@@ -14,6 +14,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import type { ContractSpendMandate, ModelClass } from "../budget/types.ts";
 import type {
   AgentContract,
   ContractSection,
@@ -144,6 +145,9 @@ const LAYERS_RE = /layer responsibilit|architecture/i;
 const GATES_RE = /checklist|before completion|verification|before handing off/i;
 const SKILLS_RE = /recommended skills|skills for this repo|agent skills/i;
 const OUT_OF_SCOPE_RE = /out of scope|non-goals|do not/i;
+const SPEND_RE = /spend mandate|spend cap|cost ceiling|budget ceiling/i;
+const HIGH_IMPACT_RE = /high-impact tool|pause-and-approve|approval[- ]required/i;
+const MODEL_CLASSES = new Set<ModelClass>(["small", "mid", "high", "frontier"]);
 
 /** Compile markdown text into an AgentContract. */
 export function compileContract(markdown: string, source = "AGENTS.md"): AgentContract {
@@ -221,8 +225,110 @@ export function compileContract(markdown: string, source = "AGENTS.md"): AgentCo
   }
 
   const outOfScope = parseListItems(findSection(sections, OUT_OF_SCOPE_RE)?.content ?? "");
+  const spendMandate = extractSpendMandate(sections);
 
-  return { source, title, mission, rules, layers, gates, skills, outOfScope, sections };
+  return { source, title, mission, rules, layers, gates, skills, outOfScope, spendMandate, sections };
+}
+
+function extractSpendMandate(sections: ContractSection[]): ContractSpendMandate | null {
+  const spendSections = sectionsUnder(sections, SPEND_RE);
+  const highImpactSections = sectionsUnder(sections, HIGH_IMPACT_RE);
+  if (spendSections.length === 0 && highImpactSections.length === 0) return null;
+
+  let runUsd: number | null = null;
+  let tenantDayUsd: number | null = null;
+  let defaultToolUsd: number | null = null;
+  let maxTurns: number | null = null;
+  let maxModelClass: ModelClass | null = null;
+  let preferredModelClass: ModelClass | null = null;
+  const toolUsd: Record<string, number> = {};
+  const highImpactTools: string[] = [];
+
+  const applyRow = (key: string, raw: string, rawKey: string) => {
+    const limit = parseUsd(raw);
+    if (key === "run" || key === "run-usd" || key === "per-run") {
+      if (limit !== null) runUsd = limit;
+      return;
+    }
+    if (key === "tenant-day" || key === "tenant/day" || key === "per-tenant-day" || key === "daily") {
+      if (limit !== null) tenantDayUsd = limit;
+      return;
+    }
+    if (key === "tool-default" || key === "default-tool" || key === "tool-default-usd") {
+      if (limit !== null) defaultToolUsd = limit;
+      return;
+    }
+    if (key === "max-turns" || key === "turns" || key === "max turns") {
+      const turns = Number(raw.replace(/[$,]/g, "").trim());
+      if (Number.isFinite(turns) && turns >= 0) maxTurns = Math.floor(turns);
+      return;
+    }
+    if (key === "max-model-class" || key === "max-class") {
+      const klass = raw.trim().toLowerCase();
+      if (MODEL_CLASSES.has(klass as ModelClass)) maxModelClass = klass as ModelClass;
+      return;
+    }
+    if (key === "preferred-model-class" || key === "preferred-class") {
+      const klass = raw.trim().toLowerCase();
+      if (MODEL_CLASSES.has(klass as ModelClass)) preferredModelClass = klass as ModelClass;
+      return;
+    }
+    if (key === "high-impact" || key === "high-impact-tools") {
+      for (const name of raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean)) {
+        highImpactTools.push(name);
+      }
+      return;
+    }
+    const toolMatch = rawKey.match(/^tool[:/]\s*(.+)$/i);
+    if (toolMatch && limit !== null) {
+      toolUsd[toolMatch[1].trim()] = limit;
+    }
+  };
+
+  for (const section of spendSections) {
+    for (const row of parseTable(section.content)) {
+      const rawKey = stripMarkdown(row["ceiling"] ?? row["kind"] ?? row["cap"] ?? "");
+      const key = rawKey.toLowerCase();
+      const limit = stripMarkdown(row["limit"] ?? row["usd"] ?? row["value"] ?? row["cap"] ?? "");
+      if (key) applyRow(key, limit, rawKey);
+    }
+  }
+
+  for (const section of [...spendSections, ...highImpactSections]) {
+    if (HIGH_IMPACT_RE.test(section.heading) || /high-impact/i.test(section.heading)) {
+      for (const item of parseListItems(section.content)) {
+        if (item) highImpactTools.push(item);
+      }
+    }
+  }
+
+  return {
+    runUsd,
+    tenantDayUsd,
+    toolUsd,
+    defaultToolUsd,
+    maxTurns,
+    highImpactTools: unique(highImpactTools),
+    maxModelClass,
+    preferredModelClass,
+  };
+}
+
+function parseUsd(raw: string): number | null {
+  const n = Number(raw.replace(/[$,]/g, "").trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function unique(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
 }
 
 /** Read and compile an AGENTS.md file from disk. */

@@ -3,9 +3,10 @@ schema: spec-driven
 context: |
   Agent Conductor turns AGENTS.md operating manuals and SKILL.md skills into an
   active orchestration layer over MCP, with the Consensus Hardening Protocol (CHP)
-  gating high-stakes decisions. Shipped as a stdio MCP server (7 tools today:
+  gating high-stakes decisions. Shipped as a stdio MCP server (tools today:
   contract_load, contract_verification, skills_list, skill_load, decision_gate,
-  decision_adversary, engine_status).
+  decision_adversary, engine_status, plus run_* bounded spend controls with
+  fail-closed budget).
 
   Tech stack: TypeScript (Node >= 23, run directly via type stripping — the source
   must stay erasable, `erasableSyntaxOnly` is enforced; no enums, no parameter
@@ -24,13 +25,16 @@ context: |
   5. CHP via PyPI — pin `consensus-hardening-protocol` in `engine/requirements.txt`;
      do not re-vendor under `engine/`. Protocol fixes belong upstream.
   6. Engine needs Python 3.10+ with the published package installed.
+  7. Bounded spend is fail-closed — run_* ceilings and kill switch; missing
+     clearance authorizes nothing.
 
   Verification gates: `npm test`, `npm run test:engine`, `npx tsc --noEmit`.
   Tests use node:test and run against the real `examples/pipeline-pulse/AGENTS.md`
   fixture; engine tests must not mock the Python side.
 
   Capability naming: name specs after the MCP surface they govern
-  (e.g. `contract-verification`, `skill-registry`, `decision-engine`).
+  (e.g. `contract-verification`, `skill-registry`, `decision-engine`,
+  `bounded-runs`).
 
 rules:
   proposal:

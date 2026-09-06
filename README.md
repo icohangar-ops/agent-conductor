@@ -93,7 +93,7 @@ git clone https://github.com/icohangar-ops/agent-conductor.git
 cd agent-conductor
 npm install
 pip install -r engine/requirements.txt
-npm test            # TypeScript tests (parser, skills, live engine bridge)
+npm test            # TypeScript tests (parser, skills, budget, live engine bridge)
 npm run test:engine # Python bridge protocol tests
 npm run build
 ```

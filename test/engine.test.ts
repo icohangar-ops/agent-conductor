@@ -20,6 +20,22 @@ test("R0 gate halts when any criterion is fatal", async () => {
   assert.equal(halt.results["Scoped"], "FATAL");
 });
 
+test("R0 gate composes optional funded criterion without changing default", async () => {
+  const legacy = await bridge.r0Gate({ solvable: true, scoped: true, valid: true, worth_it: true });
+  assert.equal(legacy.verdict, "PASS");
+  assert.equal(legacy.results["Funded"], undefined);
+
+  const unfunded = await bridge.r0Gate({
+    solvable: true,
+    scoped: true,
+    valid: true,
+    worth_it: true,
+    funded: false,
+  });
+  assert.equal(unfunded.verdict, "HALT");
+  assert.equal(unfunded.results["Funded"], "FATAL");
+});
+
 test("adversary pass returns findings and a foundation score", async () => {
   const result = await bridge.adversary({
     claim: "Change scoreDealRisk stale-activity weight from 20 to 30",

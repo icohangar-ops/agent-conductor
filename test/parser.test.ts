@@ -36,6 +36,18 @@ test("compiles the Pipeline Pulse AGENTS.md fixture", () => {
 
   // Out-of-scope list.
   assert.ok(contract.outOfScope.some((item) => /Salesforce/.test(item)));
+
+  // No spend mandate on this fixture — field is present and null.
+  assert.equal(contract.spendMandate, null);
+});
+
+test("compiles this repo's AGENTS.md spend mandate", () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "AGENTS.md");
+  const contract = loadContract(root);
+  assert.equal(contract.spendMandate?.runUsd, 2);
+  assert.equal(contract.spendMandate?.maxModelClass, "mid");
+  assert.ok(contract.spendMandate?.highImpactTools.includes("Bash"));
+  assert.ok(contract.rules.some((r) => /stdout is sacred/i.test(r)));
 });
 
 test("survives a minimal contract with no recognized sections", () => {
