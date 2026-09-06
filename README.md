@@ -1,5 +1,15 @@
 # Agent Conductor
 
+[![icohangar-ops/agent-conductor MCP server](https://glama.ai/mcp/servers/icohangar-ops/agent-conductor/badges/score.svg)](https://glama.ai/mcp/servers/icohangar-ops/agent-conductor)
+
+
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.icohangar--ops%2Fagent--conductor-00C4B4)](https://registry.modelcontextprotocol.io)
+[![npm](https://img.shields.io/npm/v/@cubiczan/agent-conductor)](https://www.npmjs.com/package/@cubiczan/agent-conductor)
+[![PyPI](https://img.shields.io/pypi/v/consensus-hardening-protocol)](https://pypi.org/project/consensus-hardening-protocol/)
+[![Conformance](https://img.shields.io/badge/CHP_Profile_A-via_PyPI-brightgreen)](https://pypi.org/project/consensus-hardening-protocol/)
+
+> **Cubiczan stack** — [Profile](https://github.com/Cubiczan) · [CHP](https://github.com/Cubiczan/consensus-hardening-protocol) · **You are here:** `agent-conductor`
+
 **AGENTS.md in, governed agent team out.**
 
 Agent Conductor is an [MCP](https://modelcontextprotocol.io) server that turns
@@ -8,7 +18,7 @@ the two conventions the coding-agent ecosystem has converged on —
 passive documentation into an active orchestration layer, with a
 consensus-hardened decision engine gating high-stakes changes.
 
-- **Mirrors:** [codeberg.org/cubiczan/agent-conductor](https://codeberg.org/cubiczan/agent-conductor) · [github.com/icohangar-ops/agent-conductor](https://github.com/icohangar-ops/agent-conductor)
+- **Mirrors:** [Cubiczan/agent-conductor](https://github.com/Cubiczan/agent-conductor) · [codeberg.org/cubiczan/agent-conductor](https://codeberg.org/cubiczan/agent-conductor) · [icohangar-ops/agent-conductor](https://github.com/icohangar-ops/agent-conductor)
 - **License:** MIT
 - **Status:** v0.1 — working scaffold; see [Roadmap](#roadmap)
 
@@ -42,43 +52,47 @@ MCP client (Claude Code / Cursor / Copilot / ...)
 │ TypeScript front end (src/)                    │
 │   contract/parser.ts   AGENTS.md → contract    │
 │   skills/loader.ts     SKILL.md discovery      │
-│   budget/              spend mandate + kill    │
-│   server.ts            14 MCP tools            │
+│   server.ts            7 MCP tools             │
 └────────────────┬───────────────────────────────┘
                  │  newline-delimited JSON, child stdio
                  ▼
 ┌────────────────────────────────────────────────┐
 │ Python decision engine (engine/)               │
-│   vendored Consensus Hardening Protocol core   │
+│   bridge.py → PyPI consensus-hardening-protocol│
 │   R0 gates · foundation attacks · lifecycle    │
 └────────────────────────────────────────────────┘
 ```
 
-Four capability groups:
+Three capability groups:
 
 1. **Contract** — compile an `AGENTS.md` into structured mission,
    non-negotiable rules, layer do/don't boundaries, verification gates,
-   skill recommendations, an optional spend mandate, and an out-of-scope list.
+   skill recommendations, and an out-of-scope list.
 2. **Skills** — discover `SKILL.md` skills across project and personal
    scopes with progressive disclosure: metadata costs ~100 tokens, bodies
    load only on demand.
 3. **Decision** — gate work through the
-   [Consensus Hardening Protocol](https://codeberg.org/cubiczan/consensus-hardening-protocol):
+   [Consensus Hardening Protocol](https://github.com/icohangar-ops/consensus-hardening-protocol):
    a cheap R0 sanity gate before work starts, and an adversarial
    foundation-attack pass before a high-stakes change locks.
-4. **Bounded run** — fail-closed spend ceilings, preflight cost preview,
-   pause-and-approve for high-impact tools, and an operator kill switch
-   that does not ask the model.
 
 ## Quick start
 
-Requirements: **Node 23+** (runs TypeScript natively) and **Python 3.9+**
-(stdlib only — the engine needs no pip installs).
+```bash
+npx -y @cubiczan/agent-conductor
+pip install consensus-hardening-protocol   # required for decision_* tools
+```
+
+**npm:** [@cubiczan/agent-conductor](https://www.npmjs.com/package/@cubiczan/agent-conductor) · **PyPI:** [consensus-hardening-protocol](https://pypi.org/project/consensus-hardening-protocol/)
+
+Requirements: **Node 23+** (runs TypeScript natively) and **Python 3.10+**
+with the published CHP package installed.
 
 ```bash
-git clone https://codeberg.org/cubiczan/agent-conductor.git
+git clone https://github.com/icohangar-ops/agent-conductor.git
 cd agent-conductor
 npm install
+pip install -r engine/requirements.txt
 npm test            # TypeScript tests (parser, skills, budget, live engine bridge)
 npm run test:engine # Python bridge protocol tests
 npm run build
@@ -96,8 +110,8 @@ Or in any MCP client's JSON config:
 {
   "mcpServers": {
     "agent-conductor": {
-      "command": "node",
-      "args": ["/path/to/agent-conductor/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "@cubiczan/agent-conductor"]
     }
   }
 }
@@ -210,11 +224,6 @@ check, run *before* doing the work.
 Any `FATAL` answer halts: stop and reframe before burning tokens on a
 problem that isn't scoped, isn't understood, or isn't worth solving.
 
-Pass optional `funded: false` to add a `Funded` row — the spend-mandate
-circuit breaker composes into the same R0 HALT path rather than a side
-policy engine. Omitted `funded` leaves legacy four-criterion behavior
-unchanged.
-
 ### `decision_adversary`
 
 A one-shot adversarial pass for high-stakes changes: CHP attacks the claim's
@@ -249,101 +258,8 @@ foundations failed.
 
 ### `engine_status`
 
-Health-check the Python engine subprocess. By default returns a cheap
-readiness snapshot without spawning Python; pass `probe: true` for a live
-ping.
-
-### Bounded autonomous runs
-
-Always-on agents burn quotas; token overhead is invisible; multi-agent
-loops hide cost. Conductor treats spend as a **decision gate**, not a
-suggestion the model can ignore.
-
-```text
-preflight → begin(mandate) → authorize → [client calls model/tool] → commit
-                 │                │
-                 │                ├─ HALT (ceiling / kill / turn cap)
-                 │                └─ APPROVE_REQUIRED → run_approve + CHP R0
-                 └─ run_kill at any time (process-local, no model)
-```
-
-**Fail closed.** A run without finite `runUsd` and `tenantDayUsd` cannot
-start. `run_commit` without a clearance id from `run_authorize` is
-rejected. After an underestimate settle that crosses a ceiling, the run
-trips a hard stop so the next authorize cannot continue.
-
-**Approximate preview.** Tokens ≈ `ceil(chars / 4)`. Class rates (USD per
-1M tokens) follow CHP `ModelTier` names and are **not** live provider
-prices:
-
-| Class | Typical names | Input / 1M | Output / 1M |
-|-------|---------------|------------|-------------|
-| `small` | haiku, mini | $0.15 | $0.60 |
-| `mid` | sonnet, 4o | $3 | $15 |
-| `high` | opus-high, gpt-5 | $15 | $75 |
-| `frontier` | opus-max | $25 | $125 |
-
-Pass `actualUsd` / token counts on `run_commit` when the provider reports
-them. The inspector always sets `approximate: true`.
-
-**Ceilings.** Per-run, per-tool, and per-tenant UTC-day USD. `maxTurns`
-is a stuck-loop hard cap on model authorizations. High-impact tools
-return `APPROVE_REQUIRED` until `run_approve` (which runs CHP R0 when
-the engine is wired). `run_kill` trips a process-local switch; further
-`run_begin` / `run_authorize` calls HALT without consulting a model.
-
-**Ledger.** Every authorize writes a `before` record (and a `route`
-record for model calls: chosen class, why, estimate). Every commit writes
-`after`. Halted attempts are also ledgered. The store is in-memory for
-the MCP process.
-
-**AGENTS.md convention.** A `Spend mandate` section (aliases: spend cap,
-cost ceiling, budget ceiling) compiles into `contract.spendMandate`:
-
-```markdown
-## Spend mandate
-
-| Ceiling | Limit |
-|---------|-------|
-| run | 2.00 |
-| tenant-day | 10.00 |
-| tool-default | 0.25 |
-| tool:Bash | 0.10 |
-| max-turns | 12 |
-| max-model-class | mid |
-| preferred-model-class | small |
-
-### High-impact tools
-
-- Bash
-```
-
-See [examples/safe-autonomous-run](examples/safe-autonomous-run/AGENTS.md)
-for a recipe that hits a tiny ceiling and stops. The same loop is
-`runSafeAutonomousRecipe()` in `src/budget/recipe.ts`.
-
-### `run_preflight`
-
-Dry-run context inspector. Input: `systemRules`, `history`, `toolSchemas`,
-`userPrompt`, optional `modelClass` (default `small`). Output: per-class
-token counts, input/output USD, `approximate: true`.
-
-### `run_begin`
-
-Start a run. Pass explicit ceilings and/or `path` to an AGENTS.md with a
-spend mandate. Requires `tenantId`. Missing/invalid ceilings return an
-error (`invalid_mandate`).
-
-### `run_authorize` / `run_commit`
-
-Two-phase spend. Authorize reserves the estimate and returns a
-`clearanceId` on PASS. Commit settles actuals. Reasons include
-`run_ceiling`, `tool_ceiling`, `tenant_day_ceiling`, `stuck_loop`,
-`kill_switch`, `hard_stop`, `no_clearance`, `high_impact_tool`.
-
-### `run_approve` / `run_kill` / `run_status`
-
-Human checkpoint, operator abort, and ledger/remaining snapshot.
+Health-check the Python engine subprocess. Returns
+`{ ok, engine: "chp", version }`.
 
 ## What the parser recognizes
 
@@ -358,7 +274,6 @@ patterns AGENTS.md files in the wild actually use:
 | `gates` | Shell code blocks + list items under checklist / verification / before-completion headings |
 | `skills` | Tables with `Task` / `Skill` / `Why` columns; links resolved to text + URL |
 | `outOfScope` | List under an out-of-scope / non-goals heading |
-| `spendMandate` | Table under `Spend mandate` / spend cap / cost ceiling / budget ceiling; high-impact tool lists |
 | `sections` | Everything, verbatim — the lossless fallback |
 
 Headings inside code fences are ignored; tables tolerate emphasis in headers;
@@ -387,11 +302,10 @@ standards): third-person description with matchable keywords, metadata around
 100 tokens, body under 500 lines, no machine-specific absolute paths, declare
 only the tools the skill needs.
 
-The bundled fixtures are
-[examples/pipeline-pulse](examples/pipeline-pulse/AGENTS.md) (parser /
-skills) and
-[examples/safe-autonomous-run](examples/safe-autonomous-run/AGENTS.md)
-(spend ceilings that halt a looping recipe).
+The bundled example —
+[examples/pipeline-pulse](examples/pipeline-pulse/AGENTS.md) — is a complete
+real-world AGENTS.md plus a project-scoped skill, and is what the test suite
+compiles.
 
 ## Project structure
 
@@ -401,25 +315,24 @@ skills) and
 ├── ARCHITECTURE.md            # Design decisions and component detail
 ├── src/
 │   ├── index.ts               # stdio entrypoint
-│   ├── server.ts              # MCP server: 14 tools
+│   ├── server.ts              # MCP server: 7 tools
 │   ├── contract/              # AGENTS.md → AgentContract compiler
 │   ├── skills/                # SKILL.md loader + registry
-│   ├── budget/                # spend mandate, preflight, kill switch, ledger
 │   ├── engine/chpBridge.ts    # Python engine client
 │   └── utils/logger.ts        # stderr-only logging (stdout is the transport)
 ├── engine/
-│   ├── bridge.py              # JSON-over-stdio request router
-│   ├── test_bridge.py         # protocol tests
-│   └── vendor/cme/            # vendored CHP core (MIT, byte-identical; see NOTICE.md)
+│   ├── bridge.py              # JSON-over-stdio router → PyPI `chp`
+│   ├── requirements.txt       # consensus-hardening-protocol pin
+│   ├── NOTICE.md              # attribution for the published engine
+│   └── test_bridge.py         # protocol tests
 ├── examples/pipeline-pulse/   # real AGENTS.md fixture + example skill
-├── examples/safe-autonomous-run/  # bounded-run recipe (ceiling + halt)
-├── openspec/                  # living change docs for this capability
 └── test/                      # node:test suites (run the .ts directly)
 ```
 
 ## Development
 
 ```bash
+pip install -r engine/requirements.txt
 npm test            # TypeScript tests — includes a live engine round-trip
 npm run test:engine # Python-side protocol tests
 npx tsc --noEmit    # type check
@@ -431,20 +344,20 @@ House rules (the full set is in this repo's own [AGENTS.md](AGENTS.md)):
 
 1. **stdout is sacred** — the MCP transport owns it; all logging goes to
    stderr on both sides of the bridge.
-2. **Zero new runtime dependencies** — only `@modelcontextprotocol/sdk` and
-   `zod`; markdown and frontmatter parsing stay hand-rolled and tested.
+2. **Zero new Node runtime dependencies** — only `@modelcontextprotocol/sdk`
+   and `zod`; markdown/frontmatter stay hand-rolled. CHP is a PyPI dep.
 3. **Erasable TypeScript only** — source must run under Node's type
    stripping (no enums, no parameter properties).
-4. **Vendor discipline** — `engine/vendor/cme/` stays byte-identical to
-   upstream except the documented `__init__.py` patch; engine behavior
-   changes belong in `bridge.py`.
+4. **CHP via PyPI** — install `consensus-hardening-protocol`; do not
+   re-vendor under `engine/`. Protocol fixes belong upstream.
+5. **Python 3.10+** — required by the published package.
 
 ## Roadmap
 
 | Version | Theme | Scope |
 |---------|-------|-------|
 | **v0.2** | Enforcement | Execute `contract_verification` gates as real subprocesses and return pass/fail evidence — turning "reads the contract" into "enforces the contract" |
-| **v0.3** | Orchestration | Map contract layers onto CHP `MeshAgent` capabilities (`produces`/`consumes`) and expose full multi-agent deliberation sessions over MCP |
+| **v0.3** | Orchestration | Expose `decision_lock` + mesh session tools over MCP (multi-agent deliberation on top of published CHP) |
 | **v0.4** | Registry | Install vetted skills from remote catalogs (awesome-agent-skills format) with source-review prompts |
 
 ## Provenance
@@ -453,14 +366,22 @@ Conductor deliberately reuses proven components rather than rewriting them:
 
 | Component | Source | License |
 |-----------|--------|---------|
-| Decision engine (`engine/vendor/cme/`) | [consensus-hardening-protocol](https://codeberg.org/cubiczan/consensus-hardening-protocol) | MIT |
+| Decision engine (PyPI) | [consensus-hardening-protocol](https://github.com/icohangar-ops/consensus-hardening-protocol) | MIT |
 | MCP server + registry shape | [onchainmind](https://codeberg.org/cubiczan/onchainmind) | MIT |
 | Skill quality standards | [VoltAgent/awesome-agent-skills](https://github.com/VoltAgent/awesome-agent-skills) | — |
 | Example fixture | Pipeline Pulse CRM operating manual | fixture |
 
-See [engine/vendor/NOTICE.md](engine/vendor/NOTICE.md) for vendoring details
-and [ARCHITECTURE.md](ARCHITECTURE.md) for the reasoning behind the
-two-language design.
+See [engine/NOTICE.md](engine/NOTICE.md) and [ARCHITECTURE.md](ARCHITECTURE.md)
+for the two-language design.
+
+---
+
+## Cubiczan stack
+
+| Governance | [consensus-hardening-protocol](https://github.com/Cubiczan/consensus-hardening-protocol) · **agent-conductor** · [compliance-as-code-agent](https://github.com/Cubiczan/compliance-as-code-agent) · [cleanmandate](https://github.com/Cubiczan/cleanmandate) |
+| Platform | [cubiczan-mcp-server](https://github.com/Cubiczan/cubiczan-mcp-server) · [operational-intelligence](https://github.com/Cubiczan/operational-intelligence) · [software-factory](https://github.com/Cubiczan/software-factory) |
+
+Conductor compiles `AGENTS.md` + `SKILL.md` into MCP tools and routes high-stakes decisions through CHP — the same lock model [Metabocommand](https://github.com/Cubiczan/Metabocommand) uses for finance approvals.
 
 ## License
 
