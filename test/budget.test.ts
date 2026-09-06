@@ -201,6 +201,38 @@ test("high-impact tool requires approval and CHP R0", async () => {
   assert.ok(next.clearanceId);
 });
 
+test("per-tool ceiling applies to tools only, not model turns", async () => {
+  const controller = new BoundedRunController();
+  assert.equal(
+    controller.begin({
+      tenantId: "acme",
+      runId: "tool-cap",
+      runUsd: 1,
+      tenantDayUsd: 1,
+      defaultToolUsd: 0.00005,
+      toolUsd: { Bash: 0.0001 },
+    }).ok,
+    true,
+  );
+  const model = await controller.authorize({
+    runId: "tool-cap",
+    kind: "model",
+    name: "haiku",
+    estimatedUsd: 0.0002,
+  });
+  assert.equal(model.verdict, "PASS");
+  assert.equal(controller.commit({ clearanceId: model.clearanceId! }).verdict, "PASS");
+
+  const blocked = await controller.authorize({
+    runId: "tool-cap",
+    kind: "tool",
+    name: "Bash",
+    estimatedUsd: 0.0002,
+  });
+  assert.equal(blocked.verdict, "HALT");
+  assert.equal(blocked.reason, "tool_ceiling");
+});
+
 test("stuck-loop turn cap fail-closes further model calls", async () => {
   const controller = new BoundedRunController();
   assert.equal(

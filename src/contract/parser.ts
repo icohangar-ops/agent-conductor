@@ -244,7 +244,7 @@ function extractSpendMandate(sections: ContractSection[]): ContractSpendMandate 
   const toolUsd: Record<string, number> = {};
   const highImpactTools: string[] = [];
 
-  const applyRow = (key: string, raw: string) => {
+  const applyRow = (key: string, raw: string, rawKey: string) => {
     const limit = parseUsd(raw);
     if (key === "run" || key === "run-usd" || key === "per-run") {
       if (limit !== null) runUsd = limit;
@@ -279,17 +279,18 @@ function extractSpendMandate(sections: ContractSection[]): ContractSpendMandate 
       }
       return;
     }
-    const toolMatch = key.match(/^tool[:/]\s*(.+)$/);
+    const toolMatch = rawKey.match(/^tool[:/]\s*(.+)$/i);
     if (toolMatch && limit !== null) {
-      toolUsd[toolMatch[1]] = limit;
+      toolUsd[toolMatch[1].trim()] = limit;
     }
   };
 
   for (const section of spendSections) {
     for (const row of parseTable(section.content)) {
-      const key = stripMarkdown(row["ceiling"] ?? row["kind"] ?? row["cap"] ?? "").toLowerCase();
+      const rawKey = stripMarkdown(row["ceiling"] ?? row["kind"] ?? row["cap"] ?? "");
+      const key = rawKey.toLowerCase();
       const limit = stripMarkdown(row["limit"] ?? row["usd"] ?? row["value"] ?? row["cap"] ?? "");
-      if (key) applyRow(key, limit);
+      if (key) applyRow(key, limit, rawKey);
     }
   }
 

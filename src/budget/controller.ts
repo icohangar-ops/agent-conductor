@@ -28,7 +28,7 @@ import type {
 const MODEL_CLASSES: readonly ModelClass[] = ["small", "mid", "high", "frontier"];
 
 export class BoundedRunController {
-  private readonly kill: KillSwitch;
+  private readonly killSwitch: KillSwitch;
   private readonly gate: ChpGate | undefined;
   private readonly now: () => Date;
   private seq = 0;
@@ -49,7 +49,7 @@ export class BoundedRunController {
 
   constructor(options?: { gate?: ChpGate; kill?: KillSwitch; now?: () => Date }) {
     this.gate = options?.gate;
-    this.kill = options?.kill ?? new KillSwitch();
+    this.killSwitch = options?.kill ?? new KillSwitch();
     this.now = options?.now ?? (() => new Date());
   }
 
@@ -80,12 +80,12 @@ export class BoundedRunController {
   }
 
   begin(input: BeginInput): { ok: true; mandate: SpendMandate } | { ok: false; reason: string } {
-    if (this.kill.isTripped()) {
+    if (this.killSwitch.isTripped()) {
       return { ok: false, reason: "kill_switch" };
     }
     const mandate = compileMandate(input, () => this.nextId("run"));
     if (!mandate.ok) return mandate;
-    if (this.kill.isTripped(mandate.mandate.runId)) {
+    if (this.killSwitch.isTripped(mandate.mandate.runId)) {
       return { ok: false, reason: "kill_switch" };
     }
     this.mandates.set(mandate.mandate.runId, mandate.mandate);
@@ -97,13 +97,13 @@ export class BoundedRunController {
     if (!mandate) {
       return { verdict: "HALT", reason: "missing_mandate" };
     }
-    if (this.kill.isTripped(input.runId)) {
+    if (this.killSwitch.isTripped(input.runId)) {
       this.recordHalt(mandate, input, "kill_switch");
-      return { verdict: "HALT", reason: "kill_switch", remaining: this.remaining(mandate, input.name) };
+      return { verdict: "HALT", reason: "kill_switch", remaining: this.remaining(mandate, input.name, input.kind) };
     }
     if (this.hardStop.has(input.runId)) {
       this.recordHalt(mandate, input, "hard_stop");
-      return { verdict: "HALT", reason: "hard_stop", remaining: this.remaining(mandate, input.name) };
+      return { verdict: "HALT", reason: "hard_stop", remaining: this.remaining(mandate, input.name, input.kind) };
     }
 
     const route =
@@ -122,7 +122,7 @@ export class BoundedRunController {
       return { verdict: "HALT", reason: "invalid_mandate", estimate };
     }
 
-    const remaining = this.remaining(mandate, input.name);
+    const remaining = this.remaining(mandate, input.name, input.kind);
     if (input.kind === "model" && remaining.turns >= mandate.maxTurns) {
       this.recordHalt(mandate, input, "stuck_loop", estimate, route);
       return { verdict: "HALT", reason: "stuck_loop", estimate, remaining, route };
@@ -131,7 +131,7 @@ export class BoundedRunController {
       this.recordHalt(mandate, input, "run_ceiling", estimate, route);
       return { verdict: "HALT", reason: "run_ceiling", estimate, remaining, route };
     }
-    if (estimate.totalUsd > remaining.toolUsd + 1e-12) {
+    if (input.kind === "tool" && estimate.totalUsd > remaining.toolUsd + 1e-12) {
       this.recordHalt(mandate, input, "tool_ceiling", estimate, route);
       return { verdict: "HALT", reason: "tool_ceiling", estimate, remaining, route };
     }
@@ -183,12 +183,12 @@ export class BoundedRunController {
       tokensOut: estimate.tokens.outputEstimate,
       modelClass: estimate.modelClass,
     });
-    this.addReserved(mandate, input.name, estimate.totalUsd);
+    this.addReserved(mandate, input.name, estimate.totalUsd, input.kind);
     if (input.kind === "model") {
       this.turns.set(input.runId, (this.turns.get(input.runId) ?? 0) + 1);
     }
 
-    const afterReserve = this.remaining(mandate, input.name);
+    const afterReserve = this.remaining(mandate, input.name, input.kind);
     this.appendLedger({
       tenantId: mandate.tenantId,
       runId: mandate.runId,
@@ -247,11 +247,15 @@ export class BoundedRunController {
 
     this.reservations.delete(input.clearanceId);
     this.settled.add(input.clearanceId);
-    this.addReserved(mandate, reservation.name, -reservation.estimatedUsd);
-    this.addSpent(mandate, reservation.name, actual);
+    this.addReserved(mandate, reservation.name, -reservation.estimatedUsd, reservation.kind);
+    this.addSpent(mandate, reservation.name, actual, reservation.kind);
 
-    const remaining = this.remaining(mandate, reservation.name);
-    if (remaining.runUsd < -1e-12 || remaining.tenantDayUsd < -1e-12 || remaining.toolUsd < -1e-12) {
+    const remaining = this.remaining(mandate, reservation.name, reservation.kind);
+    if (
+      remaining.runUsd < -1e-12 ||
+      remaining.tenantDayUsd < -1e-12 ||
+      (reservation.kind === "tool" && remaining.toolUsd < -1e-12)
+    ) {
       this.hardStop.add(mandate.runId);
     }
 
@@ -294,7 +298,7 @@ export class BoundedRunController {
   ): Promise<Clearance> {
     const mandate = this.mandates.get(runId);
     if (!mandate) return { verdict: "HALT", reason: "missing_mandate" };
-    if (this.kill.isTripped(runId)) return { verdict: "HALT", reason: "kill_switch" };
+    if (this.killSwitch.isTripped(runId)) return { verdict: "HALT", reason: "kill_switch" };
 
     if (this.gate) {
       if (!r0) return { verdict: "HALT", reason: "chp_r0" };
@@ -334,7 +338,7 @@ export class BoundedRunController {
   }
 
   kill(runId?: string, reason = "operator_abort"): Clearance {
-    this.kill.trip(runId, reason);
+    this.killSwitch.trip(runId, reason);
     const target = runId && runId !== "*" ? this.mandates.get(runId) : undefined;
     this.appendLedger({
       tenantId: target?.tenantId ?? "",
@@ -365,7 +369,7 @@ export class BoundedRunController {
         hardStop: this.hardStop.has(mandate.runId),
       }));
     const ledger = runId ? this.ledger.filter((e) => e.runId === runId || e.runId === "") : [...this.ledger];
-    return { kill: this.kill.snapshot(), runs, ledger };
+    return { kill: this.killSwitch.snapshot(), runs, ledger };
   }
 
   getLedger(): readonly LedgerEntry[] {
@@ -406,14 +410,16 @@ export class BoundedRunController {
     };
   }
 
-  private remaining(mandate: SpendMandate, toolName?: string): RemainingBudget {
+  private remaining(
+    mandate: SpendMandate,
+    toolName?: string,
+    kind: "model" | "tool" = "tool",
+  ): RemainingBudget {
     const runUsed = (this.runSpent.get(mandate.runId) ?? 0) + (this.runReserved.get(mandate.runId) ?? 0);
     const dayKey = this.dayKey(mandate.tenantId);
     const dayUsed = (this.tenantDaySpent.get(dayKey) ?? 0) + (this.tenantDayReserved.get(dayKey) ?? 0);
-    const toolKey = toolName ? `${mandate.runId}:${toolName}` : undefined;
-    const toolCap = toolName
-      ? (mandate.toolUsd[toolName] ?? mandate.defaultToolUsd)
-      : mandate.defaultToolUsd;
+    const toolKey = toolName && kind === "tool" ? `${mandate.runId}:${toolName}` : undefined;
+    const toolCap = toolName && kind === "tool" ? toolCeiling(mandate, toolName) : mandate.defaultToolUsd;
     const toolUsed = toolKey
       ? (this.toolSpent.get(toolKey) ?? 0) + (this.toolReserved.get(toolKey) ?? 0)
       : 0;
@@ -426,20 +432,34 @@ export class BoundedRunController {
     };
   }
 
-  private addReserved(mandate: SpendMandate, toolName: string, delta: number): void {
+  private addReserved(
+    mandate: SpendMandate,
+    toolName: string,
+    delta: number,
+    kind: "model" | "tool",
+  ): void {
     this.runReserved.set(mandate.runId, money((this.runReserved.get(mandate.runId) ?? 0) + delta));
     const dayKey = this.dayKey(mandate.tenantId);
     this.tenantDayReserved.set(dayKey, money((this.tenantDayReserved.get(dayKey) ?? 0) + delta));
-    const toolKey = `${mandate.runId}:${toolName}`;
-    this.toolReserved.set(toolKey, money((this.toolReserved.get(toolKey) ?? 0) + delta));
+    if (kind === "tool") {
+      const toolKey = `${mandate.runId}:${toolName}`;
+      this.toolReserved.set(toolKey, money((this.toolReserved.get(toolKey) ?? 0) + delta));
+    }
   }
 
-  private addSpent(mandate: SpendMandate, toolName: string, delta: number): void {
+  private addSpent(
+    mandate: SpendMandate,
+    toolName: string,
+    delta: number,
+    kind: "model" | "tool",
+  ): void {
     this.runSpent.set(mandate.runId, money((this.runSpent.get(mandate.runId) ?? 0) + delta));
     const dayKey = this.dayKey(mandate.tenantId);
     this.tenantDaySpent.set(dayKey, money((this.tenantDaySpent.get(dayKey) ?? 0) + delta));
-    const toolKey = `${mandate.runId}:${toolName}`;
-    this.toolSpent.set(toolKey, money((this.toolSpent.get(toolKey) ?? 0) + delta));
+    if (kind === "tool") {
+      const toolKey = `${mandate.runId}:${toolName}`;
+      this.toolSpent.set(toolKey, money((this.toolSpent.get(toolKey) ?? 0) + delta));
+    }
   }
 
   private dayKey(tenantId: string): string {
@@ -465,7 +485,7 @@ export class BoundedRunController {
       tokensIn: estimate?.tokens.totalInput,
       tokensOut: estimate?.tokens.outputEstimate,
       estimatedUsd: estimate?.totalUsd ?? 0,
-      remaining: this.remaining(mandate, input.name),
+      remaining: this.remaining(mandate, input.name, input.kind),
       verdict,
     });
   }
@@ -543,4 +563,10 @@ function pickNumber(explicit?: number, fromContract?: number | null): number | n
 function isHighImpact(mandate: SpendMandate, name: string): boolean {
   const needle = name.toLowerCase();
   return mandate.highImpactTools.some((t) => t.toLowerCase() === needle);
+}
+
+function toolCeiling(mandate: SpendMandate, name: string): number {
+  if (mandate.toolUsd[name] !== undefined) return mandate.toolUsd[name];
+  const hit = Object.entries(mandate.toolUsd).find(([key]) => key.toLowerCase() === name.toLowerCase());
+  return hit ? hit[1] : mandate.defaultToolUsd;
 }
