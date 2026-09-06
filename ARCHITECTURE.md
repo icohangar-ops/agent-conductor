@@ -21,7 +21,8 @@ MCP client (Claude Code / Cursor / Copilot / ...)
 │  contract/parser.ts   AGENTS.md → AgentContract│
 │  skills/loader.ts     SKILL.md discovery       │
 │  skills/registry.ts   register / load on demand│
-│  server.ts            7 MCP tools              │
+│  budget/              spend mandate + kill     │
+│  server.ts            14 MCP tools             │
 │  engine/chpBridge.ts  engine client            │
 └────────────────┬───────────────────────────────┘
                  │  newline-delimited JSON over child stdio
@@ -57,10 +58,30 @@ patterns of the AGENTS.md ecosystem —
 - **skills** (recommendation tables with `Task`/`Skill`/`Why` columns,
   links resolved)
 - **out of scope** (list under an out-of-scope/non-goals heading)
+- **spend mandate** (optional table under spend-cap / cost-ceiling headings,
+  plus high-impact tool lists)
 
 Unrecognized sections are preserved verbatim in `sections`, so the compiled
 form is lossless. Zero dependencies — a small line-walker that is
 fence-aware (headings inside code blocks don't split sections).
+
+### Bounded runs (`src/budget/`)
+
+In-process spend control that extends CHP rather than replacing it:
+
+- **preflight** — approximate token/cost breakdown (`ceil(chars/4)`,
+  documented class rates aligned with CHP `ModelTier`)
+- **authorize / commit** — reserve then settle; missing clearance
+  fail-closes; ledger `before` / `after` (and `route` for model choice)
+- **ceilings** — per-run, per-tool, per-tenant UTC-day; `maxTurns` is
+  the stuck-loop cap
+- **high-impact tools** — `APPROVE_REQUIRED` until `run_approve`, which
+  calls existing `r0_gate` (optional `funded` criterion composed in
+  `bridge.py`, not in vendored `gates.py`)
+- **kill switch** — process-local; the model is not consulted
+
+The ledger is in-memory for the MCP process lifetime. The controller
+does not execute the model or tool — the client does, only after PASS.
 
 ### Skill loader + registry (`src/skills/`)
 
@@ -86,7 +107,7 @@ The vendored core of consensus-hardening-protocol, exposed through
 
 - **`r0_gate`** — the cheapest, highest-leverage CHP gate: before any work,
   is the decision solvable, scoped, valid, and worth making? Any FATAL →
-  HALT.
+  HALT. Optional `funded` adds a spend-mandate row in `bridge.py`.
 - **`adversary`** — `TriangulationRunner.as_adversary(claim)`: a one-shot
   pass where CHP attacks the claim's foundations, produces a 0–100
   foundation score, devil's-advocate findings, and a session status

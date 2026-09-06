@@ -42,7 +42,8 @@ MCP client (Claude Code / Cursor / Copilot / ...)
 │ TypeScript front end (src/)                    │
 │   contract/parser.ts   AGENTS.md → contract    │
 │   skills/loader.ts     SKILL.md discovery      │
-│   server.ts            7 MCP tools             │
+│   budget/              spend mandate + kill    │
+│   server.ts            14 MCP tools            │
 └────────────────┬───────────────────────────────┘
                  │  newline-delimited JSON, child stdio
                  ▼
@@ -53,11 +54,11 @@ MCP client (Claude Code / Cursor / Copilot / ...)
 └────────────────────────────────────────────────┘
 ```
 
-Three capability groups:
+Four capability groups:
 
 1. **Contract** — compile an `AGENTS.md` into structured mission,
    non-negotiable rules, layer do/don't boundaries, verification gates,
-   skill recommendations, and an out-of-scope list.
+   skill recommendations, an optional spend mandate, and an out-of-scope list.
 2. **Skills** — discover `SKILL.md` skills across project and personal
    scopes with progressive disclosure: metadata costs ~100 tokens, bodies
    load only on demand.
@@ -65,6 +66,9 @@ Three capability groups:
    [Consensus Hardening Protocol](https://codeberg.org/cubiczan/consensus-hardening-protocol):
    a cheap R0 sanity gate before work starts, and an adversarial
    foundation-attack pass before a high-stakes change locks.
+4. **Bounded run** — fail-closed spend ceilings, preflight cost preview,
+   pause-and-approve for high-impact tools, and an operator kill switch
+   that does not ask the model.
 
 ## Quick start
 
@@ -75,7 +79,7 @@ Requirements: **Node 23+** (runs TypeScript natively) and **Python 3.9+**
 git clone https://codeberg.org/cubiczan/agent-conductor.git
 cd agent-conductor
 npm install
-npm test            # 14 TypeScript tests (parser, skills, live engine bridge)
+npm test            # TypeScript tests (parser, skills, budget, live engine bridge)
 npm run test:engine # Python bridge protocol tests
 npm run build
 ```
@@ -206,6 +210,11 @@ check, run *before* doing the work.
 Any `FATAL` answer halts: stop and reframe before burning tokens on a
 problem that isn't scoped, isn't understood, or isn't worth solving.
 
+Pass optional `funded: false` to add a `Funded` row — the spend-mandate
+circuit breaker composes into the same R0 HALT path rather than a side
+policy engine. Omitted `funded` leaves legacy four-criterion behavior
+unchanged.
+
 ### `decision_adversary`
 
 A one-shot adversarial pass for high-stakes changes: CHP attacks the claim's
@@ -240,8 +249,101 @@ foundations failed.
 
 ### `engine_status`
 
-Health-check the Python engine subprocess. Returns
-`{ ok, engine: "chp", version }`.
+Health-check the Python engine subprocess. By default returns a cheap
+readiness snapshot without spawning Python; pass `probe: true` for a live
+ping.
+
+### Bounded autonomous runs
+
+Always-on agents burn quotas; token overhead is invisible; multi-agent
+loops hide cost. Conductor treats spend as a **decision gate**, not a
+suggestion the model can ignore.
+
+```text
+preflight → begin(mandate) → authorize → [client calls model/tool] → commit
+                 │                │
+                 │                ├─ HALT (ceiling / kill / turn cap)
+                 │                └─ APPROVE_REQUIRED → run_approve + CHP R0
+                 └─ run_kill at any time (process-local, no model)
+```
+
+**Fail closed.** A run without finite `runUsd` and `tenantDayUsd` cannot
+start. `run_commit` without a clearance id from `run_authorize` is
+rejected. After an underestimate settle that crosses a ceiling, the run
+trips a hard stop so the next authorize cannot continue.
+
+**Approximate preview.** Tokens ≈ `ceil(chars / 4)`. Class rates (USD per
+1M tokens) follow CHP `ModelTier` names and are **not** live provider
+prices:
+
+| Class | Typical names | Input / 1M | Output / 1M |
+|-------|---------------|------------|-------------|
+| `small` | haiku, mini | $0.15 | $0.60 |
+| `mid` | sonnet, 4o | $3 | $15 |
+| `high` | opus-high, gpt-5 | $15 | $75 |
+| `frontier` | opus-max | $25 | $125 |
+
+Pass `actualUsd` / token counts on `run_commit` when the provider reports
+them. The inspector always sets `approximate: true`.
+
+**Ceilings.** Per-run, per-tool, and per-tenant UTC-day USD. `maxTurns`
+is a stuck-loop hard cap on model authorizations. High-impact tools
+return `APPROVE_REQUIRED` until `run_approve` (which runs CHP R0 when
+the engine is wired). `run_kill` trips a process-local switch; further
+`run_begin` / `run_authorize` calls HALT without consulting a model.
+
+**Ledger.** Every authorize writes a `before` record (and a `route`
+record for model calls: chosen class, why, estimate). Every commit writes
+`after`. Halted attempts are also ledgered. The store is in-memory for
+the MCP process.
+
+**AGENTS.md convention.** A `Spend mandate` section (aliases: spend cap,
+cost ceiling, budget ceiling) compiles into `contract.spendMandate`:
+
+```markdown
+## Spend mandate
+
+| Ceiling | Limit |
+|---------|-------|
+| run | 2.00 |
+| tenant-day | 10.00 |
+| tool-default | 0.25 |
+| tool:Bash | 0.10 |
+| max-turns | 12 |
+| max-model-class | mid |
+| preferred-model-class | small |
+
+### High-impact tools
+
+- Bash
+```
+
+See [examples/safe-autonomous-run](examples/safe-autonomous-run/AGENTS.md)
+for a recipe that hits a tiny ceiling and stops. The same loop is
+`runSafeAutonomousRecipe()` in `src/budget/recipe.ts`.
+
+### `run_preflight`
+
+Dry-run context inspector. Input: `systemRules`, `history`, `toolSchemas`,
+`userPrompt`, optional `modelClass` (default `small`). Output: per-class
+token counts, input/output USD, `approximate: true`.
+
+### `run_begin`
+
+Start a run. Pass explicit ceilings and/or `path` to an AGENTS.md with a
+spend mandate. Requires `tenantId`. Missing/invalid ceilings return an
+error (`invalid_mandate`).
+
+### `run_authorize` / `run_commit`
+
+Two-phase spend. Authorize reserves the estimate and returns a
+`clearanceId` on PASS. Commit settles actuals. Reasons include
+`run_ceiling`, `tool_ceiling`, `tenant_day_ceiling`, `stuck_loop`,
+`kill_switch`, `hard_stop`, `no_clearance`, `high_impact_tool`.
+
+### `run_approve` / `run_kill` / `run_status`
+
+Human checkpoint, operator abort, and ledger/remaining snapshot.
 
 ## What the parser recognizes
 
@@ -256,6 +358,7 @@ patterns AGENTS.md files in the wild actually use:
 | `gates` | Shell code blocks + list items under checklist / verification / before-completion headings |
 | `skills` | Tables with `Task` / `Skill` / `Why` columns; links resolved to text + URL |
 | `outOfScope` | List under an out-of-scope / non-goals heading |
+| `spendMandate` | Table under `Spend mandate` / spend cap / cost ceiling / budget ceiling; high-impact tool lists |
 | `sections` | Everything, verbatim — the lossless fallback |
 
 Headings inside code fences are ignored; tables tolerate emphasis in headers;
@@ -284,10 +387,11 @@ standards): third-person description with matchable keywords, metadata around
 100 tokens, body under 500 lines, no machine-specific absolute paths, declare
 only the tools the skill needs.
 
-The bundled example —
-[examples/pipeline-pulse](examples/pipeline-pulse/AGENTS.md) — is a complete
-real-world AGENTS.md plus a project-scoped skill, and is what the test suite
-compiles.
+The bundled fixtures are
+[examples/pipeline-pulse](examples/pipeline-pulse/AGENTS.md) (parser /
+skills) and
+[examples/safe-autonomous-run](examples/safe-autonomous-run/AGENTS.md)
+(spend ceilings that halt a looping recipe).
 
 ## Project structure
 
@@ -297,9 +401,10 @@ compiles.
 ├── ARCHITECTURE.md            # Design decisions and component detail
 ├── src/
 │   ├── index.ts               # stdio entrypoint
-│   ├── server.ts              # MCP server: 7 tools
+│   ├── server.ts              # MCP server: 14 tools
 │   ├── contract/              # AGENTS.md → AgentContract compiler
 │   ├── skills/                # SKILL.md loader + registry
+│   ├── budget/                # spend mandate, preflight, kill switch, ledger
 │   ├── engine/chpBridge.ts    # Python engine client
 │   └── utils/logger.ts        # stderr-only logging (stdout is the transport)
 ├── engine/
@@ -307,6 +412,8 @@ compiles.
 │   ├── test_bridge.py         # protocol tests
 │   └── vendor/cme/            # vendored CHP core (MIT, byte-identical; see NOTICE.md)
 ├── examples/pipeline-pulse/   # real AGENTS.md fixture + example skill
+├── examples/safe-autonomous-run/  # bounded-run recipe (ceiling + halt)
+├── openspec/                  # living change docs for this capability
 └── test/                      # node:test suites (run the .ts directly)
 ```
 

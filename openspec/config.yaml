@@ -1,0 +1,8 @@
+schema: spec-driven
+context: |
+  Agent Conductor compiles AGENTS.md and SKILL.md into an MCP orchestration
+  layer with CHP decision gates. Constraints: stdout is sacred; zero new
+  runtime dependencies (MCP SDK + zod only); lossless contract compilation;
+  erasable TypeScript; vendored CHP stays byte-identical except __init__.py;
+  engine is stdlib Python 3.9+. Reuse existing decision gates and
+  src/lib/resilience rather than inventing a new package.

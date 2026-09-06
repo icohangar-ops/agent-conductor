@@ -9,7 +9,8 @@ Response: {"id": <any>, "result": {...}} | {"id": <any>, "error": "<message>"}
 
 Methods:
     ping       -> {"ok": true, "engine": "chp", "version": ...}
-    r0_gate    -> params: solvable, scoped, valid, worth_it (booleans)
+    r0_gate    -> params: solvable, scoped, valid, worth_it (booleans);
+                  optional funded (bool) adds a Funded PASS/FATAL row
                   result: {"verdict": "PASS"|"HALT", "results": {...}}
     adversary  -> params: claim (str), context (str, optional),
                   high_stakes (bool, default true)
@@ -42,7 +43,16 @@ def handle_r0_gate(params):
         valid=bool(params.get("valid", False)),
         worth_it=bool(params.get("worth_it", False)),
     )
-    return {"verdict": gate.verdict.value, "results": gate.results}
+    results = dict(gate.results)
+    # Optional spend-mandate criterion. Composed here (not in vendored
+    # gates.py) so a budget fail-close participates in the existing R0
+    # HALT path without forking CHP.
+    if "funded" in params:
+        results["Funded"] = "PASS" if params.get("funded") else "FATAL"
+    verdict = (
+        "PASS" if all(value == "PASS" for value in results.values()) else "HALT"
+    )
+    return {"verdict": verdict, "results": results}
 
 
 def handle_adversary(params):

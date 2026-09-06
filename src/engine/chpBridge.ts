@@ -18,6 +18,8 @@ export interface R0GateInput {
   scoped: boolean;
   valid: boolean;
   worth_it: boolean;
+  /** Optional budget criterion composed into the existing R0 gate. */
+  funded?: boolean;
 }
 
 export interface R0GateResult {
