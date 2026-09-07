@@ -19,10 +19,10 @@ MCP client (Claude Code / Cursor / Copilot / ...)
 │ TypeScript front end (src/)                    │
 │                                                │
 │  contract/parser.ts   AGENTS.md → AgentContract│
+│  contract/workspace.ts Multi-root merge        │
 │  skills/loader.ts     SKILL.md discovery       │
 │  skills/registry.ts   register / load on demand│
-│  budget/              spend mandate + kill     │
-│  server.ts            14 MCP tools             │
+│  server.ts            7 MCP tools              │
 │  engine/chpBridge.ts  engine client            │
 └────────────────┬───────────────────────────────┘
                  │  newline-delimited JSON over child stdio
@@ -30,12 +30,13 @@ MCP client (Claude Code / Cursor / Copilot / ...)
 ┌────────────────────────────────────────────────┐
 │ Python decision engine (engine/)               │
 │                                                │
-│  bridge.py            NDJSON request router    │
-│  requirements.txt     PyPI CHP pin             │
-│  → consensus-hardening-protocol (`import chp`) │
-│    chp.gates          R0 + phase gates         │
-│    chp.runner         adversarial passes       │
-│    chp.models         decision lifecycle       │
+│  bridge.py            request router           │
+│  vendor/cme/          vendored CHP core (MIT)  │
+│    chp/gates.py       R0 + phase gates         │
+│    chp/runner.py      adversarial passes       │
+│    chp/models.py      decision lifecycle       │
+│    orchestrator.py    produces/consumes DAG    │
+│    agent.py           MeshAgent base           │
 └────────────────────────────────────────────────┘
 ```
 
@@ -57,38 +58,29 @@ patterns of the AGENTS.md ecosystem —
 - **skills** (recommendation tables with `Task`/`Skill`/`Why` columns,
   links resolved)
 - **out of scope** (list under an out-of-scope/non-goals heading)
-- **spend mandate** (optional table under spend-cap / cost-ceiling headings,
-  plus high-impact tool lists)
 
 Unrecognized sections are preserved verbatim in `sections`, so the compiled
 form is lossless. Zero dependencies — a small line-walker that is
 fence-aware (headings inside code blocks don't split sections).
 
-### Bounded runs (`src/budget/`)
-
-In-process spend control that extends CHP rather than replacing it:
-
-- **preflight** — approximate token/cost breakdown (`ceil(chars/4)`,
-  documented class rates aligned with CHP `ModelTier`)
-- **authorize / commit** — reserve then settle; missing clearance
-  fail-closes; ledger `before` / `after` (and `route` for model choice)
-- **ceilings** — per-run, per-tool, per-tenant UTC-day; `maxTurns` is
-  the stuck-loop cap
-- **high-impact tools** — `APPROVE_REQUIRED` until `run_approve`, which
-  calls existing `r0_gate` (optional `funded` criterion composed in
-  `bridge.py`, not in vendored `gates.py`)
-- **kill switch** — process-local; the model is not consulted
-
-The ledger is in-memory for the MCP process lifetime. The controller
-does not execute the model or tool — the client does, only after PASS.
+`workspace.ts` walks an explicit roots list or map file (`.conductor/roots.json`,
+`conductor.roots.json`, or a line-oriented sibling), compiles every AGENTS.md
+it finds, and emits **one** contract whose layer table and verification
+commands are the concatenation of every root. Extra source roots — the
+Gradle `sourceSet` case where skills live outside a module directory — are
+visible when declared. A missing declared root fails closed; the loader
+does not invent or skip roots. A directory with no roots map still compiles
+as a single root, so `examples/pipeline-pulse` is unchanged.
 
 ### Skill loader + registry (`src/skills/`)
 
 Implements progressive disclosure over the SKILL.md convention:
 
 - **Discovery** scans, in shadowing order: `.conductor/skills`,
-  `.claude/skills`, `.cursor/skills` (project), then `~/.claude/skills`,
-  `~/.cursor/skills` (personal). First hit per skill name wins.
+  `.claude/skills`, `.cursor/skills` (project) for each declared root, then
+  `~/.claude/skills`, `~/.cursor/skills` (personal, once). First hit per
+  skill name wins. Multi-root workspaces therefore resolve skills that live
+  outside a module directory.
 - **Metadata** comes from frontmatter only (name, description, version,
   tools) — what `skills_list` returns, cheap enough to put wholesale in a
   model's context.
@@ -100,27 +92,24 @@ classes to filesystem-discovered SKILL.md files.
 
 ### Decision engine (`engine/`)
 
-Published [`consensus-hardening-protocol`](https://pypi.org/project/consensus-hardening-protocol/)
-(`import chp`), reached through `bridge.py` over newline-delimited JSON
-(`{id, method, params}` → `{id, result | error}`). MCP tools map 1:1:
-
-| MCP tool | Bridge method | CHP surface |
-|----------|---------------|-------------|
-| `decision_gate` | `r0_gate` | `chp.gates.evaluate_r0_gate` |
-| `decision_adversary` | `adversary` | `TriangulationRunner.as_adversary` |
-| `engine_status` | `ping` | package version + subprocess health |
-| *(v0.3)* `decision_lock` / mesh sessions | TBD | lock progression + multi-agent |
+The vendored core of consensus-hardening-protocol, exposed through
+`bridge.py` over newline-delimited JSON (`{id, method, params}` →
+`{id, result | error}`). Two methods are wired in v0.1:
 
 - **`r0_gate`** — the cheapest, highest-leverage CHP gate: before any work,
   is the decision solvable, scoped, valid, and worth making? Any FATAL →
-  HALT. Optional `funded` adds a spend-mandate row in `bridge.py`.
+  HALT.
 - **`adversary`** — `TriangulationRunner.as_adversary(claim)`: a one-shot
   pass where CHP attacks the claim's foundations, produces a 0–100
   foundation score, devil's-advocate findings, and a session status
   (EXPLORING / HALT / REFRAME_REQUIRED).
 
-Install with `pip install -r engine/requirements.txt` (Python 3.10+).
-Do not re-vendor; protocol fixes belong in the upstream package.
+The vendor copy excludes CHP's finance-domain packages (`finance/`,
+`cfo_os/`, `demo/`, CLI) — only the protocol core ships. `__init__.py` is
+patched accordingly; everything else is byte-identical to upstream. The
+core is pure-Python stdlib (dataclasses only), so the engine needs no pip
+install and runs on Python 3.9+ despite upstream targeting 3.10
+(`from __future__ import annotations` throughout).
 
 ### Bridge client (`src/engine/chpBridge.ts`)
 
@@ -152,15 +141,17 @@ the server's stderr. The subprocess is reused across calls.
 
 | Component | Source | License |
 |-----------|--------|---------|
-| PyPI `consensus-hardening-protocol` | [icohangar-ops/consensus-hardening-protocol](https://github.com/icohangar-ops/consensus-hardening-protocol) | MIT |
+| `engine/vendor/cme/` | [consensus-hardening-protocol](https://codeberg.org/cubiczan/consensus-hardening-protocol) | MIT |
 | `src/server.ts`, `src/skills/registry.ts` (shape) | [onchainmind](https://codeberg.org/cubiczan/onchainmind) | MIT |
 | `examples/pipeline-pulse/AGENTS.md` | Pipeline Pulse CRM operating manual | fixture |
+| `examples/multimodule/` | Gradle-style extra source root | fixture |
 
 ## Testing
 
 - `npm test` — node:test, runs the TypeScript directly (Node 23+ type
   stripping; `erasableSyntaxOnly` keeps the source strippable): contract
-  parser against the real fixture and edge cases, skill loader/registry,
-  and the live engine bridge end to end (spawns Python).
+  parser against the real fixtures and edge cases (including the
+  multi-module extra-source-root fixture), skill loader/registry, and the
+  live engine bridge end to end (spawns Python).
 - `npm run test:engine` — Python-side protocol tests: happy paths, unknown
   method, missing params.
