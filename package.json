@@ -51,7 +51,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "zod": "^3.24.0"
+    "zod": "^4.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -59,5 +59,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "overrides": {
+    "raw-body@<4.0.0": "4.0.0"
   }
 }
